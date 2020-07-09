@@ -1,0 +1,87 @@
+---
+title:  "Glimpse of survey responses"
+author: "Nick Spyrison"
+date:   "09/07/2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library("dplyr")
+library("ggplot2")
+
+df <- read.csv2("./data/cleaned_full_survey_responses_ns2020-07-09.csv", 
+                skip = 1, sep = ",")
+.header <- read.csv2("./data/cleaned_full_survey_responses_ns2020-07-09.csv", 
+                          skip = 0, sep = ",", nrows = 1)
+ShortColNames <- colnames(.header)
+LongColNames  <- as.character(.header)
+colnames(df) <- ShortColNames
+```
+
+# Demographics
+
+## Self reported location -- Q4.1:
+
+```{r demograpraphics}
+decode_loc <- 
+  data.frame(
+    Q4.1 = 
+      case_when(df$Q4.1 == "Other (please specify)" ~ paste0("Other: ", df$Q4.1_5_TEXT),
+                df$Q4.1 != "Other (please specify)" ~ df$Q4.1))
+
+loc_cnt_tbl <- sort(table(decode_loc$Q4.1), decreasing = TRUE)
+loc_cnt_tbl <- data.frame(Location = names(loc_cnt_tbl), 
+                          Count = as.vector(loc_cnt_tbl))
+
+top_10_loc <- loc_cnt_tbl[1:10, ]
+top_10_loc$Location <- 
+  factor(top_10_loc$Location, levels = unique(top_10_loc$Location))
+
+ggplot(top_10_loc, aes(x = Location, y = Count, fill = Count)) + 
+  geom_col() + 
+  scale_x_discrete(limits = rev(levels(top_10_loc$Location))) +
+  coord_flip()
+```
+
+# Word Cloud on text fields
+
+```{r WordClouds}
+
+```
+
+# Candidates for removal
+
+```{r CandidatesForRemoval}
+## Based on Progress:
+within(df, hist(Progress))
+.prog_can <- df[c("ResponseId", "Finished", "Progress")][df$Progress < 100, ]
+.o <- order(.prog_can$Progress, decreasing = T)
+.prog_can[.o, ]
+
+## Based on Duration:
+.dur_can <- data.frame(ResponseId = df$ResponseId,
+                       Duration_min = df$`Duration (in seconds)` / 60)
+
+ggplot(.dur_can, aes(y = Duration_min)) + geom_boxplot() +
+  scale_y_log10() + ylab("Log10, Duration [min]")
+.dur_cond <- df$`Duration (in seconds)` < 60 * 3 | df$`Duration (in seconds)` > 60 * 30
+.dur_can <- df[c("ResponseId", "Finished", "Duration (in seconds)")][.dur_cond, ]
+.o <- order(.dur_can$`Duration (in seconds)`, decreasing = T)
+cat("Longer than 30 min or less than 3 min: \n")
+.dur_can[.o, ]
+
+
+```
+
+# Overview of the data
+
+```{r glimpse}
+try(str(df, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113], 
+head(df)             ## Head of Tibble
+skimr::skim(df)      ## Break down by column data type
+```
+

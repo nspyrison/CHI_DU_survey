@@ -1,0 +1,34 @@
+---
+title:  "Glimpse of survey responses"
+author: "Nick Spyrison"
+date:   "09/07/2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library("dplyr")
+library("ggplot2")
+
+df <- read.csv2("./data/cleaned_full_survey_responses_ns2020-07-09.csv", 
+                skip = 1, sep = ",")
+.header <- read.csv2("./data/cleaned_full_survey_responses_ns2020-07-09.csv", 
+                          skip = 0, sep = ",", nrows = 1)
+ShortColNames <- colnames(.header)
+LongColNames  <- as.character(.header)
+colnames(df) <- ShortColNames
+```
+
+
+# Overview of columns
+
+```{r glimpse}
+try(str(df, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113], 
+head(df)             ## Head of Tibble
+skimr::skim(df)      ## Break down by column data type
+
+```
+
