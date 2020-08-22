@@ -1,0 +1,222 @@
+---
+title:  "Glimpse of survey responses"
+author: "Nick Spyrison"
+date:   "09/07/2020"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, error = F)
+library("dplyr")
+library("ggplot2")
+library("knitr")
+do_write_xlsx <- FALSE
+
+prefix <- c("full", "quant", "text")
+do_shorten_col_nms <- c(T, F, F)
+i_s <- 1:length(prefix)
+for(i in i_s) {
+  xFilepath = paste0("./data/cleaned_", prefix[i], "_survey_responses_ns2020-07-11.csv")
+  .df <- read.csv2(xFilepath, 
+                   skip = 1, sep = ",", check.names = F)
+  .header <- read.csv2(xFilepath, 
+                       skip = 0, sep = ",", nrows = 1)
+  .ShortColNames <- colnames(.header)
+  if(do_shorten_col_nms[i] == T)
+    colnames(.df) <-  .ShortColNames
+  .LongColNames  <- as.character(.header)
+  .colname_tbl <- data.frame(cbind(.ShortColNames,
+                                   .LongColNames,
+                                   1:ncol(.header)))
+  colnames(.colname_tbl) <- c("ShortName", "LongName", "ColNumber")
+  df_nm <- paste0("df_", prefix[i])
+  assign(df_nm, .df)
+  col_nm <- paste0("colname_tbl_", prefix[i])
+  assign(col_nm, .colname_tbl)
+  cat(paste0("Assigned ", df_nm, " and ", col_nm, " to the global env. \n"))
+}
+## EXPECTED init --
+f <- df_full
+q <- df_quant
+t <- df_text
+```
+
+
+```{r}
+### Geom bar helper
+ns_geom_bar_ord <- function(col_num, ## NUMBER of the column
+                            df_obj = q,
+                            top_n = 8,
+                            do_ord_decr = TRUE) {
+  ## Decoded long name
+  .col_nm <- colnames(df_obj)[col_num]
+  ## Vector of values
+  .x <- df_obj[, col_num]
+  .x_alt <- .x
+  .x_alt[is.na(.x_alt)] <- "<NA>"
+  .x_alt[.x_alt == ""] <- "<blank>"
+  .cnt_tbl <- sort(table(.x_alt), decreasing = !do_ord_decr)
+  .df_cnt <- data.frame(Options = names(.cnt_tbl), 
+                        Count = as.numeric(.cnt_tbl))
+  
+  ## Sum loower options
+  .n_rows <- nrow(.df_cnt)
+  if(.n_rows > top_n) {
+    .df_cnt <- data.frame(
+      rbind(.df_cnt[1:top_n, ],
+            c("<all other options>", sum(.df_cnt[(top_n + 1):.n_rows, 2]))
+      )
+    )
+  }
+    ## Fix disp order after appending <all others>
+  .df_cnt$Options <- factor(.df_cnt$Options, levels = unique(.df_cnt$Options))
+  
+  ## numerator and denominator for response rate
+  .n <- length(.x[!is.na(.x)])
+  .d <- length(.x)
+
+  ## Create bar chart
+  ggplot(.df_cnt, aes(x = Options, y = Count, fill = as.numeric(Count))) + 
+    geom_col(stat = "identity") + 
+    coord_flip() + 
+    ggtitle(paste0("Top ", top_n, " reponses of: ", .col_nm),
+            paste0(.n, " non-na obs of ", .d, " respones (", round(100 * .n/.d, 1),"%)")) +
+    #scale_x_discrete(limits = rev(levels(.df_cnt$Options))) +
+    labs(fill = "Count")
+}
+
+library("wordcloud")
+library("RColorBrewer")
+library("tm")
+set.seed(1234) # for reproducibility 
+ns_make_wordcloud <- function(col_num, ## NUMBER of the column
+                           df_obj = t) {
+  ## following: https://towardsdatascience.com/create-a-word-cloud-with-r-bde3e7422e8a
+  ## STEP 1: Retrieving the data and uploading the packages
+  .x <-  df_obj[, col_num]
+  .x_alt <- .x[!is.na(.x)]
+  .x_alt <- tolower(.x_alt)
+  docs <- Corpus(VectorSource(.x_alt))
+  
+  ## STEP 2: Clean the text data
+  docs <- docs %>%
+    tm_map(removeNumbers) %>%
+    tm_map(removePunctuation) %>%
+    tm_map(stripWhitespace)
+  docs <- tm_map(docs, content_transformer(tolower))
+  docs <- tm_map(docs, removeWords, stopwords("english"))
+  
+  ## STEP 3: Create a document-term-matrix
+  dtm <- TermDocumentMatrix(docs) 
+  matrix <- as.matrix(dtm) 
+  words <- sort(rowSums(matrix), decreasing = TRUE) 
+  df <- data.frame(word = names(words), freq = words)
+  
+  ## STEP 4: Generate the word cloud
+  ## (set seed outside of for loop)
+  .col_nm <- colnames(df_obj)[col_num]
+  .title <- paste0(nrow(df), " responses, for: " , .col_nm)
+  
+  # layout(matrix(c(1, 2), nrow=2), heights=c(1, 4))
+  # par(mar=rep(0, 4))
+  # plot.new()
+  # text(x=0.5, y=0.5, .title, cex = 1)
+  cat(.title)
+  try(
+    wordcloud(words = df$word, freq = df$freq, min.freq = 1,
+              max.words=200, random.order = FALSE, rot.per=0.35,
+              colors=brewer.pal(8, "Dark2"), main = "Title")
+  )
+}
+```
+
+#
+```{r}
+library(DT)
+sub <- df_full %>% select(Q2.2, Q2.3, Q2.4, Q3.1, Q3.2, Q3.3, Q3.4_1, Q3.5, 
+                          Q4.1, Q4.2, Q4.3, StartDate, Finished,
+                          Duration..in.seconds., LocationLatitude, LocationLongitude, Q6.8:Q6.14)
+sub_colnames_lookup <- data.frame(ShortName = colnames(sub)) %>% 
+  left_join(colname_tbl_full, by = "ShortName")
+sub_colnames <- paste0(sub_colnames_lookup$ShortName,"--",sub_colnames_lookup$LongName)
+sub_colnames[12] <- "StartDate--Start Date"
+colnames(sub) <- sub_colnames
+
+DT::datatable(sub, options = 
+                list(
+                  order = list(list(1, 'desc'), list(2, 'asc'))
+                )
+)
+
+
+if (do_write_xlsx == TRUE){
+  library("openxlsx")
+  writexl::write_xlsx(sub, path = "./output/CHI_DU_InterviewCanidates.xlsx")
+}
+```
+
+
+# Demographics
+
+## World map on Lat/Long
+
+
+```{r, worldMap}
+library("ggmap")
+library("maptools")
+library("maps")
+mapWorld <- borders("world", colour = "gray50", fill = "gray90")
+
+.latlong <- data.frame(lat = as.numeric(f$LocationLatitude),  ## `Location Latitude`
+                       long = as.numeric(f$LocationLongitude)) ## `Location Longitude`
+.latlong <- .latlong[!is.na(.latlong$lat), ]
+
+.n <- nrow(.latlong)
+.d <- nrow(f)
+
+# .xlim <- c(min(.latlong$long) - 40, max(.latlong$long) + 10)
+# .ylim <- c(min(.latlong$lat) - 5,  max(.latlong$lat) + 25)
+
+ggplot() + mapWorld +
+  theme_minimal() +
+  geom_point(.latlong, mapping = aes(long, lat), alpha = .3, color = "blue") +
+  # xlim(.xlim) + ylim(.ylim) +
+  ggtitle("Map of Attendees (alpha=.3)",
+          paste0(.n, " obs of ", .d, " respones (", round(100 * .n/.d, 1),"%)"))
+```
+
+## Other demo graphics cols 4-11
+
+```{r}
+for (i in 4:11)
+  print(ns_geom_bar_ord(col_num = i, df_obj = sub))
+```
+
+
+# Appendix
+
+## Filtering thoughts
+
+- "test" names
+- Willing to be interview with no name.
+- unfinished?
+- too long of duration?
+
+## Selection thoughts
+
+- interviewing most unique responders?
+- uniform over responder distribution?
+
+## Overview of the data
+
+- On selected columns, all observations.
+
+```{r glimpse}
+try(str(sub, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113],
+head(sub)             ## Head of Tibble
+skimr::skim(sub)      ## Break down by column data type
+```
+
