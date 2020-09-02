@@ -5,21 +5,21 @@ date:   "09/07/2020"
 output:
   html_document:
     toc: true
-    toc_depth: 1
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = F)
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, error = F)
 library("dplyr")
 library("ggplot2")
 library("knitr")
-
+do_write_xlsx <- FALSE
 
 prefix <- c("full", "quant", "text")
 do_shorten_col_nms <- c(T, F, F)
 i_s <- 1:length(prefix)
 for(i in i_s) {
-  xFilepath = paste0("./data/cleaned_", prefix[i], "_survey_responses_ns2020-07-11.csv")
+  xFilepath = paste0("../data/cleaned_", prefix[i], "_survey_responses_ns2020-07-11.csv")
   .df <- read.csv2(xFilepath, 
                    skip = 1, sep = ",", check.names = F)
   .header <- read.csv2(xFilepath, 
@@ -72,7 +72,7 @@ ns_geom_bar_ord <- function(col_num, ## NUMBER of the column
     )
   }
     ## Fix disp order after appending <all others>
-  .df_cnt$Options <- as.factor(.df_cnt$Options.df_cnt$Options)
+  .df_cnt$Options <- factor(.df_cnt$Options, levels = unique(.df_cnt$Options))
   
   ## numerator and denominator for response rate
   .n <- length(.x[!is.na(.x)])
@@ -133,6 +133,31 @@ ns_make_wordcloud <- function(col_num, ## NUMBER of the column
 }
 ```
 
+```{r}
+library(DT)
+sub <- df_full %>% select(Q2.2, Q2.3, Q2.4, Q3.1, Q3.2, Q3.3, Q3.4_1, Q3.5, 
+                          Q4.1, Q4.2, Q4.3, StartDate, Finished,
+                          Duration..in.seconds., LocationLatitude, LocationLongitude, Q6.8:Q6.14)
+sub_colnames_lookup <- data.frame(ShortName = colnames(sub)) %>% 
+  left_join(colname_tbl_full, by = "ShortName")
+sub_colnames <- paste0(sub_colnames_lookup$ShortName,"--",sub_colnames_lookup$LongName)
+sub_colnames[12] <- "StartDate--Start Date"
+colnames(sub) <- sub_colnames
+
+DT::datatable(sub, options = 
+                list(
+                  order = list(list(1, 'desc'), list(2, 'asc'))
+                )
+)
+
+
+if (do_write_xlsx == TRUE){
+  library("openxlsx")
+  writexl::write_xlsx(sub, path = "./output/CHI_DU_InterviewCanidates_raw.xlsx")
+}
+```
+
+
 # Demographics
 
 ## World map on Lat/Long
@@ -155,76 +180,42 @@ mapWorld <- borders("world", colour = "gray50", fill = "gray90")
 # .ylim <- c(min(.latlong$lat) - 5,  max(.latlong$lat) + 25)
 
 ggplot() + mapWorld +
-  theme_minimal() + 
+  theme_minimal() +
   geom_point(.latlong, mapping = aes(long, lat), alpha = .3, color = "blue") +
-  # xlim(.xlim) + ylim(.ylim) + 
-  ggtitle("Map of Attendees (alpha=.3)", 
+  # xlim(.xlim) + ylim(.ylim) +
+  ggtitle("Map of Attendees (alpha=.3)",
           paste0(.n, " obs of ", .d, " respones (", round(100 * .n/.d, 1),"%)"))
 ```
 
-### Self reported location -- Q4.1
+## Other demo graphics cols 4-11
 
 ```{r}
-ns_geom_bar_ord(col_num = 12)
-```
-
-### Self reported gender -- Q3.1
-
-```{r}
-ns_geom_bar_ord(col_num = 7)
-```
-
-### Self reported employment/studentship -- Q3.3
-
-```{r}
-ns_geom_bar_ord(col_num = 9)
-```
-# Quantatative fields
-
-```{r}
-i_s <- 3:ncol(q)
-for(i in i_s)
-  print(ns_geom_bar_ord(col_num = i))
+for (i in 4:11)
+  print(ns_geom_bar_ord(col_num = i, df_obj = sub))
 ```
 
 
-# Word Cloud on text fields
+# Appendix
 
-```{r}
-i_s <- 3:ncol(t)
-for(i in i_s)
-  ns_make_wordcloud(col_num = i)
-```
+## Filtering thoughts
 
-# Candidates for removal
+- "test" names
+- Willing to be interview with no name.
+- unfinished?
+- too long of duration?
 
-```{r CandidatesForRemoval}
-## Based on Progress:
-within(f, hist(Progress))
-.prog_can <- f[c("ResponseId", "Finished", "Progress")][f$Progress < 100, ]
-.o <- order(.prog_can$Progress, decreasing = T)
-kable(.prog_can[.o, ])
+## Selection thoughts
 
-## Based on Duration:
-.dur_can <- data.frame(ResponseId = f$ResponseId,
-                       Duration_min = f$Duration..in.seconds. / 60)
+- interviewing most unique responders?
+- uniform over responder distribution?
 
-ggplot(.dur_can, aes(y = Duration_min)) + geom_boxplot() +
-  scale_y_log10() + ylab("Log10, Duration [min]")
-.dur_cond <- f$`Duration (in seconds)` < 60 * 3 | f$`Duration (in seconds)` > 60 * 30
-.dur_can <- f[c("ResponseId", "Finished", "Duration..in.seconds.")][.dur_cond, ]
-.o <- order(.dur_can$Duration..in.seconds., decreasing = T)
-cat("Longer than 30 min or less than 3 min: \n")
-kable(.dur_can[.o, ])
+## Overview of the data
 
-
-```
-
-# Overview of the data
+- On selected columns, all observations.
 
 ```{r glimpse}
-try(str(f, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113], 
-head(f)             ## Head of Tibble
-skimr::skim(f)      ## Break down by column data type
+try(str(sub, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113],
+head(sub)             ## Head of Tibble
+skimr::skim(sub)      ## Break down by column data type
 ```
 

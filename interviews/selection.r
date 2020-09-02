@@ -1,25 +1,13 @@
----
-title:  "Glimpse of survey responses"
-author: "Nick Spyrison"
-date:   "09/07/2020"
-output:
-  html_document:
-    toc: true
-    toc_depth: 3
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, error = F)
 library("dplyr")
 library("ggplot2")
 library("knitr")
-do_write_xlsx <- FALSE
+# do_write_xlsx <- FALSE
 
 prefix <- c("full", "quant", "text")
 do_shorten_col_nms <- c(T, F, F)
 i_s <- 1:length(prefix)
 for(i in i_s) {
-  xFilepath = paste0("./data/cleaned_", prefix[i], "_survey_responses_ns2020-07-11.csv")
+  xFilepath = paste0("../data/cleaned_", prefix[i], "_survey_responses_ns2020-07-11.csv")
   .df <- read.csv2(xFilepath, 
                    skip = 1, sep = ",", check.names = F)
   .header <- read.csv2(xFilepath, 
@@ -38,14 +26,11 @@ for(i in i_s) {
   assign(col_nm, .colname_tbl)
   cat(paste0("Assigned ", df_nm, " and ", col_nm, " to the global env. \n"))
 }
-## EXPECTED init --
+## EXPECTED init 
 f <- df_full
 q <- df_quant
 t <- df_text
-```
 
-
-```{r}
 ### Geom bar helper
 ns_geom_bar_ord <- function(col_num, ## NUMBER of the column
                             df_obj = q,
@@ -71,13 +56,13 @@ ns_geom_bar_ord <- function(col_num, ## NUMBER of the column
       )
     )
   }
-    ## Fix disp order after appending <all others>
+  ## Fix disp order after appending <all others>
   .df_cnt$Options <- factor(.df_cnt$Options, levels = unique(.df_cnt$Options))
   
   ## numerator and denominator for response rate
   .n <- length(.x[!is.na(.x)])
   .d <- length(.x)
-
+  
   ## Create bar chart
   ggplot(.df_cnt, aes(x = Options, y = Count, fill = as.numeric(Count))) + 
     geom_col(stat = "identity") + 
@@ -93,7 +78,7 @@ library("RColorBrewer")
 library("tm")
 set.seed(1234) # for reproducibility 
 ns_make_wordcloud <- function(col_num, ## NUMBER of the column
-                           df_obj = t) {
+                              df_obj = t) {
   ## following: https://towardsdatascience.com/create-a-word-cloud-with-r-bde3e7422e8a
   ## STEP 1: Retrieving the data and uploading the packages
   .x <-  df_obj[, col_num]
@@ -131,21 +116,34 @@ ns_make_wordcloud <- function(col_num, ## NUMBER of the column
               colors=brewer.pal(8, "Dark2"), main = "Title")
   )
 }
-```
 
-#
-```{r}
+
 library(DT)
+### SUBSET COLUMNS
 sub <- df_full %>% select(Q2.2, Q2.3, Q2.4, Q3.1, Q3.2, Q3.3, Q3.4_1, Q3.5, 
                           Q4.1, Q4.2, Q4.3, StartDate, Finished,
                           Duration..in.seconds., LocationLatitude, LocationLongitude, Q6.8:Q6.14)
+### SUBSET ROWS
+sub2 <- sub
+sub2 <- sub2[sub2[, 1] == "Yes" &
+               is.na(sub2[, 1]) == FALSE, ] ## Aggree to be interviewed
+sub2 <- sub2[nchar(sub2[, 3]) > 5 &         ## Have follow up email
+               is.na(sub2[, 3]) == FALSE, ] 
+sub2 <- sub2[sub2$Finished == "True", ]     ## Did finish, remove 2 low info rows
+dim(sub2)
+
+### HUMAN READABLE COLNAMES
 sub_colnames_lookup <- data.frame(ShortName = colnames(sub)) %>% 
   left_join(colname_tbl_full, by = "ShortName")
 sub_colnames <- paste0(sub_colnames_lookup$ShortName,"--",sub_colnames_lookup$LongName)
 sub_colnames[12] <- "StartDate--Start Date"
 colnames(sub) <- sub_colnames
 
-DT::datatable(sub, options = 
+str(sub)
+
+
+
+DT::datatable(sub2, options = 
                 list(
                   order = list(list(1, 'desc'), list(2, 'asc'))
                 )
@@ -154,69 +152,5 @@ DT::datatable(sub, options =
 
 if (do_write_xlsx == TRUE){
   library("openxlsx")
-  writexl::write_xlsx(sub, path = "./output/CHI_DU_InterviewCanidates.xlsx")
+  writexl::write_xlsx(sub, path = "./output/CHI_DU_InterviewCanidates_raw.xlsx")
 }
-```
-
-
-# Demographics
-
-## World map on Lat/Long
-
-
-```{r, worldMap}
-library("ggmap")
-library("maptools")
-library("maps")
-mapWorld <- borders("world", colour = "gray50", fill = "gray90")
-
-.latlong <- data.frame(lat = as.numeric(f$LocationLatitude),  ## `Location Latitude`
-                       long = as.numeric(f$LocationLongitude)) ## `Location Longitude`
-.latlong <- .latlong[!is.na(.latlong$lat), ]
-
-.n <- nrow(.latlong)
-.d <- nrow(f)
-
-# .xlim <- c(min(.latlong$long) - 40, max(.latlong$long) + 10)
-# .ylim <- c(min(.latlong$lat) - 5,  max(.latlong$lat) + 25)
-
-ggplot() + mapWorld +
-  theme_minimal() +
-  geom_point(.latlong, mapping = aes(long, lat), alpha = .3, color = "blue") +
-  # xlim(.xlim) + ylim(.ylim) +
-  ggtitle("Map of Attendees (alpha=.3)",
-          paste0(.n, " obs of ", .d, " respones (", round(100 * .n/.d, 1),"%)"))
-```
-
-## Other demo graphics cols 4-11
-
-```{r}
-for (i in 4:11)
-  print(ns_geom_bar_ord(col_num = i, df_obj = sub))
-```
-
-
-# Appendix
-
-## Filtering thoughts
-
-- "test" names
-- Willing to be interview with no name.
-- unfinished?
-- too long of duration?
-
-## Selection thoughts
-
-- interviewing most unique responders?
-- uniform over responder distribution?
-
-## Overview of the data
-
-- On selected columns, all observations.
-
-```{r glimpse}
-try(str(sub, nchar.max = 0), silent = T) ## Tibble of dim [120 x 113],
-head(sub)             ## Head of Tibble
-skimr::skim(sub)      ## Break down by column data type
-```
-
